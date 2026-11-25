@@ -22,6 +22,7 @@
     --nws: #c4570f;         /* NWS marker */
     --band: #cfe0f6;        /* min-max band */
     --warn: #a4580a;
+    --m1: #1f6fd1; --m2: #0f8f6b; --m3: #8a4fc7; --m4: #b8860b;   /* GFS, ECMWF, GEM, ICON */
     color-scheme: light;
     --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
   }
@@ -29,12 +30,14 @@
     :root:not([data-theme="light"]) {
       --bg: #10161d; --panel: #18212b; --fg: #e8eef4; --muted: #93a1af; --line: #2a3643;
       --accent: #6aa8f0; --nws: #f0903f; --band: #26405e; --warn: #e6a050;
+      --m1: #6aa8f0; --m2: #3fcfa0; --m3: #b78cf0; --m4: #e8c34a;
       color-scheme: dark;
     }
   }
   :root[data-theme="dark"] {
     --bg: #10161d; --panel: #18212b; --fg: #e8eef4; --muted: #93a1af; --line: #2a3643;
     --accent: #6aa8f0; --nws: #f0903f; --band: #26405e; --warn: #e6a050;
+    --m1: #6aa8f0; --m2: #3fcfa0; --m3: #b78cf0; --m4: #e8c34a;
     color-scheme: dark;
   }
   * { box-sizing: border-box; }
@@ -45,7 +48,7 @@
     padding-left: max(16px, env(safe-area-inset-left, 0px));
     padding-right: max(16px, env(safe-area-inset-right, 0px));
   }
-  main { max-width: 640px; margin: 0 auto; display: grid; gap: 14px; }
+  main { max-width: 640px; margin: 0 auto; display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; }
   header { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
   h1 { font-size: 1.15rem; margin: 0; letter-spacing: -0.01em; }
   .sub { color: var(--muted); font-size: .85rem; margin-top: 2px; }
@@ -70,12 +73,14 @@
   .scale { position: relative; height: 34px; margin: 14px 0 2px; }
   .scale .track { position: absolute; left: 0; right: 0; top: 15px; height: 4px; background: var(--line); border-radius: 2px; }
   .scale .band { position: absolute; top: 11px; height: 12px; background: var(--band); border-radius: 6px; }
-  .scale .dot { position: absolute; top: 12px; width: 10px; height: 10px; margin-left: -5px; border-radius: 50%; background: var(--accent); }
+  .scale .dot { position: absolute; top: 12px; width: 10px; height: 10px; margin-left: -5px; border-radius: 50%; box-shadow: 0 0 0 2px var(--panel); }
   .scale .nws { position: absolute; top: 6px; width: 3px; height: 22px; margin-left: -1.5px; background: var(--nws); border-radius: 2px; }
   .ticks { display: flex; justify-content: space-between; font-size: .72rem; color: var(--muted); font-variant-numeric: tabular-nums; }
   .legend { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: .78rem; color: var(--muted); margin-top: 10px; }
   .legend i { display: inline-block; vertical-align: -1px; margin-right: 5px; }
-  .legend .d { width: 10px; height: 10px; border-radius: 50%; background: var(--accent); }
+  .legend .d { width: 10px; height: 10px; border-radius: 50%; }
+  .sw { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 8px; vertical-align: -1px; }
+  .sw.nwsbar { width: 3px; height: 13px; border-radius: 2px; margin: 0 10px 0 3.5px; background: var(--nws); }
   .legend .b { width: 14px; height: 8px; border-radius: 4px; background: var(--band); }
   .legend .n { width: 3px; height: 12px; background: var(--nws); border-radius: 2px; }
   table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
@@ -120,9 +125,7 @@
       <div class="track"></div><div class="band" id="band"></div><div id="dots"></div><div class="nws" id="nwsMark" hidden></div>
     </div>
     <div class="ticks" id="ticks"></div>
-    <div class="legend" id="legend" hidden>
-      <span><i class="d"></i>Each model</span><span><i class="b"></i>Model range</span><span><i class="n"></i>NWS</span>
-    </div>
+    <div class="legend" id="legend" hidden></div>
     <p class="err" id="err" hidden></p>
   </section>
 
@@ -152,10 +155,10 @@
   "use strict";
   var HOURS = 36;
   var MODELS = [
-    { id: "gfs_seamless",  name: "American (GFS)" },
-    { id: "ecmwf_ifs025",  name: "European (ECMWF)" },
-    { id: "gem_seamless",  name: "Canadian (GEM)" },
-    { id: "icon_seamless", name: "German (ICON)" }
+    { id: "gfs_seamless",  name: "American (GFS)", color: "var(--m1)" },
+    { id: "ecmwf_ifs025",  name: "European (ECMWF)", color: "var(--m2)" },
+    { id: "gem_seamless",  name: "Canadian (GEM)", color: "var(--m3)" },
+    { id: "icon_seamless", name: "German (ICON)", color: "var(--m4)" }
   ];
   var place = { name: "St. Louis, MO", lat: 38.63, lon: -90.24 };
 
@@ -200,6 +203,7 @@
       var lows = tseg.filter(function (v) { return v !== null && v !== undefined; });
       out.push({
         name: m.name,
+        color: m.color,
         total: valid.reduce(function (a, b) { return a + b; }, 0),
         low: lows.length ? Math.min.apply(null, lows) : null,
         hourly: seg.map(function (v) { return v || 0; })
@@ -263,7 +267,9 @@
       var pct = function (v) { return Math.min(100, Math.max(0, v / top * 100)); };
       $("band").style.left = pct(lo) + "%";
       $("band").style.width = Math.max(1.5, pct(hi) - pct(lo)) + "%";
-      $("dots").innerHTML = totals.map(function (t) { return '<div class="dot" style="left:' + pct(t) + '%"></div>'; }).join("");
+      $("dots").innerHTML = models.map(function (m) { return '<div class="dot" style="left:' + pct(m.total) + '%;background:' + m.color + '"></div>'; }).join("");
+      $("legend").innerHTML = models.map(function (m) { return '<span><i class="d" style="background:' + m.color + '"></i>' + m.name.replace(/ \(.*\)/, "") + "</span>"; }).join("") +
+        '<span><i class="b"></i>Model range</span>' + (nwsIn !== null ? '<span><i class="n"></i>NWS Forecaster</span>' : "");
       var mark = $("nwsMark");
       if (nwsIn !== null) { mark.hidden = false; mark.style.left = pct(nwsIn) + "%"; } else { mark.hidden = true; }
       $("ticks").innerHTML = "<span>0</span><span>" + fmt(top / 2) + "</span><span>" + top + " in</span>";
@@ -273,10 +279,11 @@
       $("verdict").textContent = nwsIn !== null ? "NWS forecast only. The model service did not respond." : "";
     }
 
-    var rows = models.map(function (m) {
-      return "<tr><td>" + m.name + "</td><td>" + fmt(m.total) + ' in</td><td class="n2">' + (m.low === null ? "–" : Math.round(m.low) + "°F") + "</td></tr>";
+    var rows = [];
+    if (nwsIn !== null) { rows.push('<tr><td><span class="sw nwsbar"></span><b>NWS Forecaster</b></td><td><b>' + fmt(nwsIn) + " in</b></td><td></td></tr>"); }
+    models.forEach(function (m) {
+      rows.push('<tr><td><span class="sw" style="background:' + m.color + '"></span>' + m.name + "</td><td>" + fmt(m.total) + ' in</td><td class="n2">' + (m.low === null ? "–" : Math.round(m.low) + "°F") + "</td></tr>");
     });
-    if (nwsIn !== null) { rows.push("<tr><td><b>NWS forecaster</b></td><td><b>" + fmt(nwsIn) + " in</b></td><td></td></tr>"); }
     $("rows").innerHTML = rows.join("") || '<tr><td colspan="3" class="n2">No model data.</td></tr>';
 
     drawChart(mod);
