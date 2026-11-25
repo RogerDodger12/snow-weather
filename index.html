@@ -91,6 +91,7 @@
   .chart { width: 100%; height: auto; display: block; }
   .chart text { fill: var(--muted); font: 10px var(--font); }
   .chart .bar { fill: var(--accent); }
+  .chart .day { fill: var(--fg); font-weight: 600; }
   .chart .grid { stroke: var(--line); stroke-width: 1; }
   .period { padding: 10px 0; border-top: 1px solid var(--line); }
   .period:first-of-type { border-top: 0; padding-top: 0; }
@@ -139,7 +140,7 @@
 
   <section class="panel">
     <p class="label">Hourly snow, model median</p>
-    <svg class="chart" id="chart" viewBox="0 0 360 130" role="img" aria-label="Hourly snowfall, median of models"></svg>
+    <svg class="chart" id="chart" viewBox="0 0 360 142" role="img" aria-label="Hourly snowfall, median of models"></svg>
   </section>
 
   <section class="panel">
@@ -314,10 +315,23 @@
       var h = (v / top) * (B - T);
       html += '<rect class="bar" x="' + (L + k * w + 0.5) + '" y="' + (B - h) + '" width="' + Math.max(1, w - 1) + '" height="' + h + '" rx="1"/>';
     });
-    for (var k = 0; k < n; k += 6) {
-      var d = new Date(mod.labels[k]), hr = d.getHours();
-      var lab = (hr % 12 || 12) + (hr < 12 ? "a" : "p");
-      html += '<text x="' + (L + k * w + w / 2) + '" y="122" text-anchor="middle">' + lab + "</text>";
+    var dayFmt = function (d) { return d.toLocaleDateString("en-US", { weekday: "short", month: "numeric", day: "numeric" }); };
+    var lastDayX = -999;
+    for (var k = 0; k < n; k++) {
+      var d = new Date(mod.labels[k]), hr = d.getHours(), cx = L + k * w + w / 2;
+      if (hr === 0) {
+        html += '<line class="grid" stroke-dasharray="3 3" x1="' + (L + k * w) + '" x2="' + (L + k * w) + '" y1="' + T + '" y2="' + (B + 28) + '"/>';
+        html += '<text class="day" x="' + (L + k * w + 3) + '" y="134">' + dayFmt(d) + "</text>";
+        lastDayX = L + k * w;
+      } else if (hr % 6 === 0) {
+        html += '<text x="' + cx + '" y="119" text-anchor="middle">' + ((hr % 12 || 12) + (hr < 12 ? "a" : "p")) + "</text>";
+      }
+    }
+    // Label the first (current) day at the left edge unless the next day's label is too close.
+    var nextMid = -1;
+    for (var q = 0; q < n; q++) { if (new Date(mod.labels[q]).getHours() === 0) { nextMid = L + q * w; break; } }
+    if (nextMid < 0 || nextMid - L > 70) {
+      html += '<text class="day" x="' + (L + 1) + '" y="134">' + dayFmt(new Date(mod.labels[0])) + "</text>";
     }
     html += '<text x="' + R + '" y="' + (T + 3 + 12) + '" text-anchor="end">in/hr</text>';
     svg.innerHTML = html;
