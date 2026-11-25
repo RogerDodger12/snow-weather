@@ -1,0 +1,342 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Forecast Spread">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="theme-color" content="#eef2f6" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#10161d" media="(prefers-color-scheme: dark)">
+<title>Forecast Spread</title>
+<style>
+  /* Layout: one phone-width column. Verdict first (range + NWS), then model rows, hourly strip, NWS text. */
+  :root {
+    --bg: #eef2f6;
+    --panel: #ffffff;
+    --fg: #14202b;
+    --muted: #5d6b79;
+    --line: #d6dee6;
+    --accent: #1f6fd1;      /* model dots + range */
+    --nws: #c4570f;         /* NWS marker */
+    --band: #cfe0f6;        /* min-max band */
+    --warn: #a4580a;
+    color-scheme: light;
+    --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #10161d; --panel: #18212b; --fg: #e8eef4; --muted: #93a1af; --line: #2a3643;
+      --accent: #6aa8f0; --nws: #f0903f; --band: #26405e; --warn: #e6a050;
+      color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #10161d; --panel: #18212b; --fg: #e8eef4; --muted: #93a1af; --line: #2a3643;
+    --accent: #6aa8f0; --nws: #f0903f; --band: #26405e; --warn: #e6a050;
+    color-scheme: dark;
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0; background: var(--bg); color: var(--fg); font: 16px/1.45 var(--font);
+    padding-block: max(14px, env(safe-area-inset-top, 0px)) max(24px, env(safe-area-inset-bottom, 0px));
+    padding-left: max(16px, env(safe-area-inset-left, 0px));
+    padding-right: max(16px, env(safe-area-inset-right, 0px));
+  }
+  main { max-width: 640px; margin: 0 auto; display: grid; gap: 14px; }
+  header { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
+  h1 { font-size: 1.15rem; margin: 0; letter-spacing: -0.01em; }
+  .sub { color: var(--muted); font-size: .85rem; margin-top: 2px; }
+  button {
+    font: inherit; font-size: .85rem; color: var(--fg); background: var(--panel);
+    border: 1px solid var(--line); border-radius: 8px; padding: 8px 12px; min-height: 40px; cursor: pointer;
+  }
+  button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 16px; min-width: 0; }
+  .label { font-size: .72rem; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); margin: 0 0 8px; }
+  .big { font-size: 2.4rem; font-weight: 700; letter-spacing: -0.02em; line-height: 1.05; font-variant-numeric: tabular-nums; }
+  .big small { font-size: 1rem; font-weight: 500; color: var(--muted); letter-spacing: 0; }
+  .verdict { margin: 8px 0 0; color: var(--fg); }
+  .flag { color: var(--warn); font-weight: 600; }
+  .scale { position: relative; height: 34px; margin: 14px 0 2px; }
+  .scale .track { position: absolute; left: 0; right: 0; top: 15px; height: 4px; background: var(--line); border-radius: 2px; }
+  .scale .band { position: absolute; top: 11px; height: 12px; background: var(--band); border-radius: 6px; }
+  .scale .dot { position: absolute; top: 12px; width: 10px; height: 10px; margin-left: -5px; border-radius: 50%; background: var(--accent); }
+  .scale .nws { position: absolute; top: 6px; width: 3px; height: 22px; margin-left: -1.5px; background: var(--nws); border-radius: 2px; }
+  .ticks { display: flex; justify-content: space-between; font-size: .72rem; color: var(--muted); font-variant-numeric: tabular-nums; }
+  .legend { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: .78rem; color: var(--muted); margin-top: 10px; }
+  .legend i { display: inline-block; vertical-align: -1px; margin-right: 5px; }
+  .legend .d { width: 10px; height: 10px; border-radius: 50%; background: var(--accent); }
+  .legend .b { width: 14px; height: 8px; border-radius: 4px; background: var(--band); }
+  .legend .n { width: 3px; height: 12px; background: var(--nws); border-radius: 2px; }
+  table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+  th, td { text-align: left; padding: 9px 0; border-top: 1px solid var(--line); font-size: .92rem; }
+  th { font-weight: 500; color: var(--muted); border-top: 0; font-size: .75rem; text-transform: uppercase; letter-spacing: .06em; padding-top: 0; }
+  td:last-child, th:last-child { text-align: right; }
+  td.n2 { color: var(--muted); }
+  .chart { width: 100%; height: auto; display: block; }
+  .chart text { fill: var(--muted); font: 10px var(--font); }
+  .chart .bar { fill: var(--accent); }
+  .chart .grid { stroke: var(--line); stroke-width: 1; }
+  .period { padding: 10px 0; border-top: 1px solid var(--line); }
+  .period:first-of-type { border-top: 0; padding-top: 0; }
+  .period b { display: block; font-size: .9rem; }
+  .period span { color: var(--muted); font-size: .88rem; }
+  .err { color: var(--warn); font-size: .88rem; margin: 6px 0 0; }
+  .foot { color: var(--muted); font-size: .75rem; }
+  .foot a { color: var(--accent); }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <div>
+      <h1>Forecast Spread</h1>
+      <div class="sub" id="where">St. Louis, MO</div>
+    </div>
+    <div style="display:flex;gap:8px">
+      <button id="loc" type="button">Use my location</button>
+      <button id="refresh" type="button">Refresh</button>
+    </div>
+  </header>
+
+  <section class="panel" aria-live="polite">
+    <p class="label">Snow, next <span id="hrs">36</span> hours</p>
+    <div class="big" id="headline">Loading…</div>
+    <p class="verdict" id="verdict"></p>
+    <div class="scale" id="scale" hidden>
+      <div class="track"></div><div class="band" id="band"></div><div id="dots"></div><div class="nws" id="nwsMark" hidden></div>
+    </div>
+    <div class="ticks" id="ticks"></div>
+    <div class="legend" id="legend" hidden>
+      <span><i class="d"></i>Each model</span><span><i class="b"></i>Model range</span><span><i class="n"></i>NWS</span>
+    </div>
+    <p class="err" id="err" hidden></p>
+  </section>
+
+  <section class="panel">
+    <p class="label">By model</p>
+    <table>
+      <thead><tr><th>Source</th><th>Snow</th><th>Low temp</th></tr></thead>
+      <tbody id="rows"></tbody>
+    </table>
+  </section>
+
+  <section class="panel">
+    <p class="label">Hourly snow, model median</p>
+    <svg class="chart" id="chart" viewBox="0 0 360 130" role="img" aria-label="Hourly snowfall, median of models"></svg>
+  </section>
+
+  <section class="panel">
+    <p class="label">National Weather Service</p>
+    <div id="nwsText"><span class="sub">Loading…</span></div>
+  </section>
+
+  <p class="foot">Models: GFS, ECMWF, Canadian GEM, German ICON via <a href="https://open-meteo.com/">Open-Meteo</a>. Snow is raw model output and runs high when the ground is warm. NWS figures are forecaster-adjusted. Use the NWS number as the anchor.</p>
+</main>
+
+<script>
+(function () {
+  "use strict";
+  var HOURS = 36;
+  var MODELS = [
+    { id: "gfs_seamless",  name: "American (GFS)" },
+    { id: "ecmwf_ifs025",  name: "European (ECMWF)" },
+    { id: "gem_seamless",  name: "Canadian (GEM)" },
+    { id: "icon_seamless", name: "German (ICON)" }
+  ];
+  var place = { name: "St. Louis, MO", lat: 38.63, lon: -90.24 };
+
+  var $ = function (id) { return document.getElementById(id); };
+  function fmt(n) { return (Math.round(n * 10) / 10).toFixed(1).replace(/\.0$/, ""); }
+  function median(a) {
+    var s = a.slice().sort(function (x, y) { return x - y; }), m = Math.floor(s.length / 2);
+    return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2;
+  }
+  function getJSON(url, headers) {
+    return fetch(url, { headers: headers || {} }).then(function (r) {
+      if (!r.ok) { throw new Error(r.status + " from " + new URL(url).host); }
+      return r.json();
+    });
+  }
+
+  /* ---- Open-Meteo: per-model hourly snowfall (inches) ---- */
+  function loadModels() {
+    var url = "https://api.open-meteo.com/v1/forecast?latitude=" + place.lat + "&longitude=" + place.lon +
+      "&hourly=snowfall,temperature_2m&models=" + MODELS.map(function (m) { return m.id; }).join(",") +
+      "&temperature_unit=fahrenheit&precipitation_unit=inch&forecast_days=3&timezone=auto";
+    return getJSON(url).then(function (d) { return summarizeModels(d, Date.now()); });
+  }
+
+  function summarizeModels(d, nowMs) {
+    var times = d.hourly.time;               // local-time strings; utc_offset_seconds gives the shift
+    var off = (d.utc_offset_seconds || 0) * 1000;
+    var start = -1;
+    for (var i = 0; i < times.length; i++) {
+      var t = Date.parse(times[i] + "Z") - off;   // convert local string to true UTC ms
+      if (t >= nowMs - 3600 * 1000) { start = i; break; }
+    }
+    if (start < 0) { start = 0; }
+    var end = Math.min(times.length, start + HOURS);
+    var out = [];
+    MODELS.forEach(function (m) {
+      var sn = d.hourly["snowfall_" + m.id], tp = d.hourly["temperature_2m_" + m.id];
+      if (!sn) { return; }
+      var seg = sn.slice(start, end), tseg = (tp || []).slice(start, end);
+      var valid = seg.filter(function (v) { return v !== null && v !== undefined; });
+      if (!valid.length) { return; }
+      var lows = tseg.filter(function (v) { return v !== null && v !== undefined; });
+      out.push({
+        name: m.name,
+        total: valid.reduce(function (a, b) { return a + b; }, 0),
+        low: lows.length ? Math.min.apply(null, lows) : null,
+        hourly: seg.map(function (v) { return v || 0; })
+      });
+    });
+    return { models: out, labels: times.slice(start, end) };
+  }
+
+  /* ---- NWS: snowfall grid + text forecast ---- */
+  function loadNWS() {
+    var h = { Accept: "application/geo+json" };
+    return getJSON("https://api.weather.gov/points/" + place.lat.toFixed(4) + "," + place.lon.toFixed(4), h)
+      .then(function (p) {
+        return Promise.all([
+          getJSON(p.properties.forecast, h),
+          getJSON(p.properties.forecastGridData, h).catch(function () { return null; })
+        ]);
+      })
+      .then(function (r) {
+        var periods = r[0].properties.periods.slice(0, 6);
+        var snowIn = null;
+        if (r[1] && r[1].properties.snowfallAmount) {
+          snowIn = sumGrid(r[1].properties.snowfallAmount.values, Date.now(), HOURS) / 25.4;
+        }
+        return { periods: periods, snowIn: snowIn };
+      });
+  }
+
+  // values: [{validTime: "2026-11-25T18:00:00+00:00/PT6H", value: mm}]
+  function sumGrid(values, nowMs, hours) {
+    var endMs = nowMs + hours * 3600 * 1000, total = 0;
+    values.forEach(function (v) {
+      var parts = v.validTime.split("/"), s = Date.parse(parts[0]);
+      var d = /P(?:(\d+)D)?(?:T(?:(\d+)H)?)?/.exec(parts[1]);
+      var dur = ((d && d[1] ? +d[1] : 0) * 24 + (d && d[2] ? +d[2] : 0)) * 3600 * 1000 || 3600 * 1000;
+      var e = s + dur;
+      var overlap = Math.min(e, endMs) - Math.max(s, nowMs);
+      if (overlap > 0 && v.value) { total += v.value * (overlap / dur); }
+    });
+    return total;
+  }
+
+  /* ---- Rendering ---- */
+  function render(mod, nws) {
+    var models = mod ? mod.models : [];
+    $("hrs").textContent = HOURS;
+    var totals = models.map(function (m) { return m.total; });
+    var nwsIn = nws && nws.snowIn !== null ? nws.snowIn : null;
+
+    if (totals.length) {
+      var lo = Math.min.apply(null, totals), hi = Math.max.apply(null, totals), mid = median(totals);
+      $("headline").innerHTML = (hi < 0.1 ? "None" : fmt(lo) + "–" + fmt(hi)) + (hi < 0.1 ? "" : ' <small>in, models</small>');
+      var spread = hi - lo, msg;
+      if (hi < 0.1) { msg = "No model shows measurable snow."; }
+      else if (spread >= 3 || (lo > 0 && hi / lo >= 3)) { msg = '<span class="flag">Models disagree a lot.</span> Middle value is ' + fmt(mid) + " in."; }
+      else { msg = "Models roughly agree. Middle value is " + fmt(mid) + " in."; }
+      if (nwsIn !== null) { msg += " NWS has " + fmt(nwsIn) + " in."; }
+      $("verdict").innerHTML = msg;
+
+      var top = Math.max(1, Math.ceil(Math.max(hi, nwsIn || 0)));
+      var pct = function (v) { return Math.min(100, Math.max(0, v / top * 100)); };
+      $("band").style.left = pct(lo) + "%";
+      $("band").style.width = Math.max(1.5, pct(hi) - pct(lo)) + "%";
+      $("dots").innerHTML = totals.map(function (t) { return '<div class="dot" style="left:' + pct(t) + '%"></div>'; }).join("");
+      var mark = $("nwsMark");
+      if (nwsIn !== null) { mark.hidden = false; mark.style.left = pct(nwsIn) + "%"; } else { mark.hidden = true; }
+      $("ticks").innerHTML = "<span>0</span><span>" + fmt(top / 2) + "</span><span>" + top + " in</span>";
+      $("scale").hidden = false; $("legend").hidden = false;
+    } else {
+      $("headline").textContent = nwsIn !== null ? fmt(nwsIn) + " in" : "No data";
+      $("verdict").textContent = nwsIn !== null ? "NWS forecast only. The model service did not respond." : "";
+    }
+
+    var rows = models.map(function (m) {
+      return "<tr><td>" + m.name + "</td><td>" + fmt(m.total) + ' in</td><td class="n2">' + (m.low === null ? "–" : Math.round(m.low) + "°F") + "</td></tr>";
+    });
+    if (nwsIn !== null) { rows.push("<tr><td><b>NWS forecaster</b></td><td><b>" + fmt(nwsIn) + " in</b></td><td></td></tr>"); }
+    $("rows").innerHTML = rows.join("") || '<tr><td colspan="3" class="n2">No model data.</td></tr>';
+
+    drawChart(mod);
+
+    if (nws) {
+      $("nwsText").innerHTML = nws.periods.map(function (p) {
+        return '<div class="period"><b>' + esc(p.name) + ", " + p.temperature + "°" + esc(p.temperatureUnit) + "</b><span>" + esc(p.detailedForecast) + "</span></div>";
+      }).join("");
+    } else {
+      $("nwsText").innerHTML = '<span class="sub">NWS did not respond.</span>';
+    }
+  }
+
+  function esc(s) { return String(s).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); }
+
+  function drawChart(mod) {
+    var svg = $("chart");
+    if (!mod || !mod.models.length) { svg.innerHTML = ""; return; }
+    var n = mod.labels.length, med = [];
+    for (var i = 0; i < n; i++) { med.push(median(mod.models.map(function (m) { return m.hourly[i] || 0; }))); }
+    var mx = Math.max(0.1, Math.max.apply(null, med)), top = Math.ceil(mx * 10) / 10;
+    var L = 28, R = 352, T = 8, B = 106, w = (R - L) / n, html = "";
+    html += '<line class="grid" x1="' + L + '" x2="' + R + '" y1="' + B + '" y2="' + B + '"/>';
+    html += '<line class="grid" x1="' + L + '" x2="' + R + '" y1="' + T + '" y2="' + T + '"/>';
+    html += '<text x="' + (L - 4) + '" y="' + (T + 3) + '" text-anchor="end">' + fmt(top) + "</text>";
+    html += '<text x="' + (L - 4) + '" y="' + (B + 3) + '" text-anchor="end">0</text>';
+    med.forEach(function (v, k) {
+      var h = (v / top) * (B - T);
+      html += '<rect class="bar" x="' + (L + k * w + 0.5) + '" y="' + (B - h) + '" width="' + Math.max(1, w - 1) + '" height="' + h + '" rx="1"/>';
+    });
+    for (var k = 0; k < n; k += 6) {
+      var d = new Date(mod.labels[k]), hr = d.getHours();
+      var lab = (hr % 12 || 12) + (hr < 12 ? "a" : "p");
+      html += '<text x="' + (L + k * w + w / 2) + '" y="122" text-anchor="middle">' + lab + "</text>";
+    }
+    html += '<text x="' + R + '" y="' + (T + 3 + 12) + '" text-anchor="end">in/hr</text>';
+    svg.innerHTML = html;
+  }
+
+  function showError(msg) { var e = $("err"); e.textContent = msg; e.hidden = !msg; }
+
+  function load() {
+    $("where").textContent = place.name;
+    $("headline").textContent = "Loading…"; $("verdict").textContent = ""; showError("");
+    var errs = [];
+    Promise.all([
+      loadModels().catch(function (e) { errs.push("Models: " + e.message); return null; }),
+      loadNWS().catch(function (e) { errs.push("NWS: " + e.message); return null; })
+    ]).then(function (r) {
+      render(r[0], r[1]);
+      showError(errs.join(" · "));
+      try { localStorage.setItem("fs_place", JSON.stringify(place)); } catch (e) {}
+    });
+  }
+
+  $("refresh").addEventListener("click", load);
+  $("loc").addEventListener("click", function () {
+    if (!navigator.geolocation) { showError("This browser has no location access."); return; }
+    navigator.geolocation.getCurrentPosition(function (pos) {
+      place = { name: "Your location", lat: +pos.coords.latitude.toFixed(3), lon: +pos.coords.longitude.toFixed(3) };
+      load();
+    }, function () { showError("Location was blocked. Allow it in Safari settings, or keep St. Louis."); });
+  });
+  document.addEventListener("visibilitychange", function () { if (!document.hidden) { load(); } });
+
+  try { var s = JSON.parse(localStorage.getItem("fs_place") || "null"); if (s && s.lat) { place = s; } } catch (e) {}
+
+  window.__fs = { summarizeModels: summarizeModels, sumGrid: sumGrid, median: median };
+  load();
+})();
+</script>
+</body>
+</html>
