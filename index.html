@@ -229,12 +229,29 @@
       })
       .then(function (r) {
         var periods = r[0].properties.periods.slice(0, 6);
-        var snowIn = null;
+        var snowIn = null, lowF = null;
         if (r[1] && r[1].properties.snowfallAmount) {
           snowIn = sumGrid(r[1].properties.snowfallAmount.values, Date.now(), HOURS) / 25.4;
         }
-        return { periods: periods, snowIn: snowIn };
+        if (r[1] && r[1].properties.temperature) {
+          var c = minGrid(r[1].properties.temperature.values, Date.now(), HOURS);
+          if (c !== null) { lowF = c * 9 / 5 + 32; }
+        }
+        return { periods: periods, snowIn: snowIn, lowF: lowF };
       });
+  }
+
+  // Lowest value (deg C) among grid intervals that overlap the next `hours` hours.
+  function minGrid(values, nowMs, hours) {
+    var endMs = nowMs + hours * 3600 * 1000, low = null;
+    values.forEach(function (v) {
+      if (v.value === null || v.value === undefined) { return; }
+      var parts = v.validTime.split("/"), s0 = Date.parse(parts[0]);
+      var d = /P(?:(\d+)D)?(?:T(?:(\d+)H)?)?/.exec(parts[1]);
+      var dur = ((d && d[1] ? +d[1] : 0) * 24 + (d && d[2] ? +d[2] : 0)) * 3600 * 1000 || 3600 * 1000;
+      if (s0 + dur > nowMs && s0 < endMs && (low === null || v.value < low)) { low = v.value; }
+    });
+    return low;
   }
 
   // values: [{validTime: "2026-11-25T18:00:00+00:00/PT6H", value: mm}]
@@ -292,7 +309,7 @@
     }
 
     var rows = [];
-    if (nwsIn !== null) { rows.push('<tr><td><span class="sw nwsbar"></span><b>NWS Forecaster</b></td><td><b>' + fmt(nwsIn) + " in</b></td><td></td></tr>"); }
+    if (nwsIn !== null) { rows.push('<tr><td><span class="sw nwsbar"></span><b>NWS Forecaster</b></td><td><b>' + fmt(nwsIn) + ' in</b></td><td class="n2">' + (nws.lowF === null || nws.lowF === undefined ? "–" : Math.round(nws.lowF) + "°F") + "</td></tr>"); }
     models.forEach(function (m) {
       rows.push('<tr><td><span class="sw" style="background:' + m.color + '"></span>' + m.name + "</td><td>" + fmt(m.total) + ' in</td><td class="n2">' + (m.low === null ? "–" : Math.round(m.low) + "°F") + "</td></tr>");
     });
