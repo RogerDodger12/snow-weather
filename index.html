@@ -75,7 +75,10 @@
   .scale .band { position: absolute; top: 11px; height: 12px; background: var(--band); border-radius: 6px; }
   .scale .dot { position: absolute; top: 12px; width: 10px; height: 10px; margin-left: -5px; border-radius: 50%; box-shadow: 0 0 0 2px var(--panel); }
   .scale .nws { position: absolute; top: 6px; width: 3px; height: 22px; margin-left: -1.5px; background: var(--nws); border-radius: 2px; }
-  .ticks { display: flex; justify-content: space-between; font-size: .72rem; color: var(--muted); font-variant-numeric: tabular-nums; }
+  .ticks { position: relative; height: 22px; font-size: .72rem; color: var(--muted); font-variant-numeric: tabular-nums; }
+  .ticks .tk { position: absolute; top: 0; transform: translateX(-50%); text-align: center; line-height: 1; }
+  .ticks .tk u { display: block; width: 1px; height: 5px; margin: 0 auto 4px; background: var(--muted); text-decoration: none; }
+  .ticks-unit { font-size: .72rem; color: var(--muted); text-align: center; margin-top: 2px; }
   .legend { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: .78rem; color: var(--muted); margin-top: 10px; }
   .legend i { display: inline-block; vertical-align: -1px; margin-right: 5px; }
   .legend .d { width: 10px; height: 10px; border-radius: 50%; }
@@ -126,6 +129,7 @@
       <div class="track"></div><div class="band" id="band"></div><div id="dots"></div><div class="nws" id="nwsMark" hidden></div>
     </div>
     <div class="ticks" id="ticks"></div>
+    <div class="ticks-unit" id="tunit" hidden>inches of snow</div>
     <div class="legend" id="legend" hidden></div>
     <p class="err" id="err" hidden></p>
   </section>
@@ -264,8 +268,11 @@
       if (nwsIn !== null) { msg += " NWS has " + fmt(nwsIn) + " in."; }
       $("verdict").innerHTML = msg;
 
-      var top = Math.max(1, Math.ceil(Math.max(hi, nwsIn || 0)));
-      var pct = function (v) { return Math.min(100, Math.max(0, v / top * 100)); };
+      // Axis runs from 1 in below the lowest value to 1 in above the highest (never below 0), NWS included.
+      var vmin = nwsIn !== null ? Math.min(lo, nwsIn) : lo, vmax = nwsIn !== null ? Math.max(hi, nwsIn) : hi;
+      var axMin = Math.max(0, Math.floor(vmin) - 1), axMax = Math.ceil(vmax) + 1;
+      if (axMax - axMin < 3) { axMax = axMin + 3; }
+      var pct = function (v) { return Math.min(100, Math.max(0, (v - axMin) / (axMax - axMin) * 100)); };
       $("band").style.left = pct(lo) + "%";
       $("band").style.width = Math.max(1.5, pct(hi) - pct(lo)) + "%";
       $("dots").innerHTML = models.map(function (m) { return '<div class="dot" style="left:' + pct(m.total) + '%;background:' + m.color + '"></div>'; }).join("");
@@ -273,8 +280,12 @@
         '<span><i class="b"></i>Model range</span>' + (nwsIn !== null ? '<span><i class="n"></i>NWS Forecaster</span>' : "");
       var mark = $("nwsMark");
       if (nwsIn !== null) { mark.hidden = false; mark.style.left = pct(nwsIn) + "%"; } else { mark.hidden = true; }
-      $("ticks").innerHTML = "<span>0</span><span>" + fmt(top / 2) + "</span><span>" + top + " in</span>";
-      $("scale").hidden = false; $("legend").hidden = false;
+      var span = axMax - axMin, step = span <= 12 ? 1 : span <= 24 ? 2 : 5, tk = "";
+      for (var v = Math.ceil(axMin / step) * step; v <= axMax; v += step) {
+        tk += '<span class="tk" style="left:' + pct(v) + '%"><u></u>' + v + "</span>";
+      }
+      $("ticks").innerHTML = tk;
+      $("scale").hidden = false; $("legend").hidden = false; $("tunit").hidden = false;
     } else {
       $("headline").textContent = nwsIn !== null ? fmt(nwsIn) + " in" : "No data";
       $("verdict").textContent = nwsIn !== null ? "NWS forecast only. The model service did not respond." : "";
